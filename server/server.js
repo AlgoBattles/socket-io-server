@@ -186,29 +186,56 @@ app.post('/execute',  async (req, res) => {
             })
             const progress = Math.floor((passed / executionResultsArr.length) * 100)
             console.log('progress: ', progress)
+
+            // check for winner 
+            if (progress < 100) {
+                // save progress to db
+                const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
+                const dataToUpdate = {
+                    [colToUpdate]: progress,
+                }
+                const { data, error } = await supabase
+                    .from('battle_state')
+                    .update(dataToUpdate)
+                    .eq('id', req.body.battleId)
+                    .select()
+                
+                // emit results to opponent
+                const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
+                const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
+                opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
     
-            // save progress to db
-            const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
-            const dataToUpdate = {
-                [colToUpdate]: progress,
+                res.send({...response.data, progress: progress})
             }
-            const { data, error } = await supabase
-                .from('battle_state')
-                .update(dataToUpdate)
-                .eq('id', req.body.battleId)
-                .select()
-            
-            // emit results to opponent
-            const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
-            const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
-            opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
-
-            res.send({...response.data, progress: progress})
+            else if (progress === 100) {
+                // save progress to db
+                const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
+                const dataToUpdate = {
+                    [colToUpdate]: progress,
+                    battle_active: false,
+                    battle_winner: req.body.userId
+                }
+                const { data, error } = await supabase
+                    .from('battle_state')
+                    .update(dataToUpdate)
+                    .eq('id', req.body.battleId)
+                    .select()
+                
+                if (error) {
+                    console.log(error)
+                }
+                else if (data && data.length >= 1) {
+                    // emit results to opponent
+                    const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
+                    const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
+                    opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
+                    opponentSocket && opponentSocket.emit('message', { message: 'sad', action: 'game over' });
+    
+                    res.send({...response.data, progress: progress, gameOver: true})
+                }
+            }
         }    
-
-
-
-         
+  
     })
     
 
