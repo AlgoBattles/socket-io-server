@@ -7,6 +7,7 @@ const axios = require('axios');
 const isEqual = require('lodash/isEqual');
 
 const { createClient } = require('@supabase/supabase-js');
+const { stringify } = require('node:querystring');
 const supabaseUrl = 'https://jdrrftsbeohpznqghpxr.supabase.co'
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJmdHNiZW9ocHpucWdocHhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTM0OTQ5NzIsImV4cCI6MjAwOTA3MDk3Mn0.3ZXOev203HqvH3X7UWE_B9X7NGYu0Z6tlmFyAi0ii4k'
 const supabase = createClient(supabaseUrl, supabaseKey)
@@ -31,12 +32,19 @@ const io = new Server(server, {
 
 const socketToUserIdMap = new Map();
 
-io.on('connection', (socket) => {
-    socket.join(socket.handshake.query.roomId); // join room
-    // When a client sends a 'message' event, broadcast it to the room they are in
+const userToSocketMap = new Map();
 
+io.on('connection', (socket) => {
+
+    // join room
+    socket.join(socket.handshake.query.roomId); 
+
+    // map the sockets to user ids
     const userId = socket.handshake.query.userId;
+    // console.log('userId is', userId)
+    // console.log('socket id is', socket.id)
     socketToUserIdMap.set(socket.id, userId);
+    userToSocketMap.set(userId, socket.id);
 
     socket.on('message', async ({message, room, action}) => {
         // console.log('message: ' + message);
@@ -45,8 +53,8 @@ io.on('connection', (socket) => {
             console.log('message: ' + message);
             socket.broadcast.to(room).emit('message', {message: message, action: action});
         }
+
         else if (action === 'player code') {
-            console.log('updating player code')
             const { data: battleData, error: battleError } = await supabase
                 .from('battle_state')
                 .select()
@@ -63,7 +71,7 @@ io.on('connection', (socket) => {
                 .eq('id', room.slice(1,3))
                 .select()
 
-            console.log(data)
+            // console.log(data)
             
         }
         else if (action === 'player ready') {
@@ -88,7 +96,7 @@ io.on('connection', (socket) => {
                             const players = [data[0].sender_id, data[0].recipient_id]
                             const battleInfo = await handleStartBattle(players, room.slice(1,3))
                             if (battleInfo) {
-                                console.log('battle info: ', battleInfo)
+                                // console.log('battle info: ', battleInfo)
                                 io.to(room).emit('message', {message: battleInfo, action: 'start battle'});
                             }
                         }
@@ -143,8 +151,6 @@ app.post('/execute',  async (req, res) => {
         // clientSecret: req.body.clientSecret
     })
     .then(async (response) => {
-
-        console.log('response: ', response.data)
         
         // if code doesn't work
         if (response.data.run.code === 1) {
@@ -159,17 +165,18 @@ app.post('/execute',  async (req, res) => {
                 .select()
             
             // emit results to opponent
-            const roomId = 'b' + req.body.battleId
-            io.in(roomId).emit('message', { message: 0, action: 'opponent progress' });
-
+            const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
+            const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
+            opponentSocket && opponentSocket.emit('message', { message: 0, action: 'opponent progress' });
+            
+            res.send(response.data)
 
         }
         else if (response.data.run.code === 0) {
+
             // calculate progress
-            const executionResults = response.data.run.output.replace(/undefined/g, 'null');
+            const executionResults = response.data.run.output.replace(/'/g, '"').replace(/undefined/g, 'null');
             const executionResultsArr = JSON.parse(executionResults)
-            
-            const testDetails = {}
             let passed = 0
             executionResultsArr && executionResultsArr.forEach((result, index) => {
                 console.log('result: ', result)
@@ -192,10 +199,11 @@ app.post('/execute',  async (req, res) => {
                 .select()
             
             // emit results to opponent
-            const roomId = 'b' + req.body.battleId
-            io.in(roomId).emit('message', { message: progress, action: 'opponent progress' });
+            const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
+            const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
+            opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
 
-            // send results to client  
+            res.send({...response.data, progress: progress})
         }    
 
 
