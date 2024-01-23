@@ -55,20 +55,23 @@ io.on('connection', (socket) => {
         }
 
         else if (action === 'player code') {
+
+            socket.broadcast.to(room).emit('message', {message: message, action: action});
+            
             const { data: battleData, error: battleError } = await supabase
                 .from('battle_state')
                 .select()
-                .eq('id', room.slice(1,3))
+                .eq('id', room.slice(1))
             
             const userNumber = socketToUserIdMap.get(socket.id) === battleData[0].user1_id ? 'user1' : 'user2'
             const updateData = {
                 [userNumber + '_code']: message,
             }
-            socket.broadcast.to(room).emit('message', {message: message, action: action});
+
             const { data, error } = await supabase
                 .from('battle_state')
                 .update(updateData)
-                .eq('id', room.slice(1,3))
+                .eq('id', room.slice(1))
                 .select()
 
             // console.log(data)
@@ -79,9 +82,9 @@ io.on('connection', (socket) => {
             const { data: inviteData, error: inviteError } = await supabase
                 .from('battle_invites')
                 .select()
-                .eq('id', room.slice(1,3))
+                .eq('id', room.slice(1))
 
-            if (socketToUserIdMap.get(socket.id) === inviteData[0].sender_id){
+            if (inviteData && inviteData.length >= 1 && socketToUserIdMap.get(socket.id) === inviteData[0].sender_id){
                 const { data, error } = await supabase
                     .from('battle_invites')
                     .update(
@@ -89,12 +92,12 @@ io.on('connection', (socket) => {
                             sender_ready: true,
                         }
                     )
-                    .eq('id', room.slice(1,3))
+                    .eq('id', room.slice(1))
                     .select()
                     if (data && data.length >= 1) {
                         if (data[0].sender_ready && data[0].recipient_ready) {
                             const players = [data[0].sender_id, data[0].recipient_id]
-                            const battleInfo = await handleStartBattle(players, room.slice(1,3))
+                            const battleInfo = await handleStartBattle(players, room.slice(1))
                             if (battleInfo) {
                                 // console.log('battle info: ', battleInfo)
                                 io.to(room).emit('message', {message: battleInfo, action: 'start battle'});
@@ -102,7 +105,7 @@ io.on('connection', (socket) => {
                         }
                     }
             }
-            else if (socketToUserIdMap.get(socket.id) === inviteData[0].recipient_id){
+            else if (inviteData && inviteData.length >= 1 && socketToUserIdMap.get(socket.id) === inviteData[0].recipient_id){
                 const { data, error } = await supabase
                     .from('battle_invites')
                     .update(
@@ -110,17 +113,20 @@ io.on('connection', (socket) => {
                             recipient_ready: true,
                         }
                     )
-                    .eq('id', room.slice(1,3))
+                    .eq('id', room.slice(1))
                     .select()
                     if (data && data.length >= 1) {
                         if (data[0].sender_ready && data[0].recipient_ready) {
                             const players = [data[0].sender_id, data[0].recipient_id]
-                            const battleInfo = await handleStartBattle(players, room.slice(1,3))
+                            const battleInfo = await handleStartBattle(players, room.slice(1))
                             if (battleInfo) {
                                 io.to(room).emit('message', {message: battleInfo, action: 'start battle'});
                             }
                         }
                     }
+            }
+            else {
+                console.log('invite data is', inviteData, inviteError)
             }
     }
     });
