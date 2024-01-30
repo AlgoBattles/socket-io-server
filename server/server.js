@@ -10,7 +10,7 @@ const supabaseUrl = 'https://jdrrftsbeohpznqghpxr.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkcnJmdHNiZW9ocHpucWdocHhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTM0OTQ5NzIsImV4cCI6MjAwOTA3MDk3Mn0.3ZXOev203HqvH3X7UWE_B9X7NGYu0Z6tlmFyAi0ii4k';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const port = 8081;
+const port = 10000;
 
 const app = express();
 app.use(cors());
