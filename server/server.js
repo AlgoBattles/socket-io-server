@@ -149,7 +149,7 @@ app.get('/', (req, res) => {
   res.send('Hello World!')
 });
 
-app.post('/execute',  async (req, res) => {
+app.post('/execute', async (req, res) => {
   // fetch to code execution engine
   axios.post('https://v2engineapi.fly.dev/api/v1/execute', {
     code: {
@@ -158,10 +158,6 @@ app.post('/execute',  async (req, res) => {
     },
     language: req.body.language,
     args: req.body.testCases,
-  }, {
-    headers: {
-      Authorization: 'Your Header Value',
-    },
   })
     .then(async (response) => {
       // if code doesn't work
@@ -329,7 +325,7 @@ async function handleStartBattle(players, inviteId) {
             .select() 
             console.log(inviteData)
 
-        return battleInfo  
+        return battleInfo
         }
         else if (error) {
           console.log('error creating battle')
