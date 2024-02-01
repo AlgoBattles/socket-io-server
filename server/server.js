@@ -19,17 +19,17 @@ app.use(express.urlencoded({ extended: true }))
 
 const API_KEY = 'a3f1b7b6cde1234567890abcdef1234567890abcd';
 // Middleware for API key check
-function checkApiKey(req, res, next) {
-  const authHeader = req?.headers?.authorization;
+// function checkApiKey(req, res, next) {
+//   const authHeader = req?.headers?.authorization;
 
-  if (!authHeader || authHeader !== API_KEY) {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
-  next();
-}
+//   if (!authHeader || authHeader !== API_KEY) {
+//     return res.status(401).json({ message: 'Unauthorized' });
+//   }
+//   next();
+// }
 
 // Add API key check middleware here
-app.use(checkApiKey);
+// app.use(checkApiKey);
 
 const server = createServer(app);
 const io = new Server(server, {
@@ -53,14 +53,71 @@ const socketToUserIdMap = new Map();
 
 const userToSocketMap = new Map();
 
+async function handleStartBattle(players, inviteId) {
+  console.log('starting battle')
+
+  // first determine algo and fetch template code
+  const algoNum = Math.floor(Math.random() * 8)
+  const { data: algoData, error: algoError } = await supabase
+    .from('algos')
+    .select('*')
+    .eq('id', algoNum)
+
+  if (algoError) {
+    console.log('error fetching algorithm')
+  } else if (algoData && algoData.length >= 1) {
+    // then add battle to db
+    const { data: battleData, error: battleError } = await supabase
+      .from('battle_state')
+      .insert(
+        {
+          algo_id: algoNum,
+          algo_prompt: algoData[0].prompt,
+          func_name: algoData[0].func_name,
+          template_code_js: algoData[0].template_code_js,
+          template_code_python: algoData[0].template_code_python,
+          test_cases_json: algoData[0].test_cases_json,
+          user1_id: players[0],
+          user2_id: players[1],
+          user1_code: null,
+          user2_code: null,
+          user1_progress: 0,
+          user2_progress: 0,
+          battle_active: true
+        },
+      )
+      .select()
+    if (battleData && battleData.length >= 1) {
+      console.log('battle added to db')
+      const battleInfo = {
+        battle_id: battleData[0].id,
+        algo_id: battleData[0].algo_id,
+      };
+        // delete invite
+      const { data: inviteData } = await supabase
+        .from('battle_invites')
+        .delete()
+        .eq('id', inviteId)
+        .select();
+        // console.log(inviteData)
+      return battleInfo
+    }
+    else if (error) {
+      // console.log('error creating battle')
+      // console.log(error)
+      return false
+  }  
+  }
+}
+
+
+
 io.on('connection', (socket) => {
   // join room
   socket.join(socket.handshake.query.roomId); 
 
   // map the sockets to user ids
   const userId = socket.handshake.query.userId;
-  // console.log('userId is', userId)
-  // console.log('socket id is', socket.id)
   socketToUserIdMap.set(socket.id, userId);
   userToSocketMap.set(userId, socket.id);
 
@@ -80,14 +137,14 @@ io.on('connection', (socket) => {
       const userNumber = socketToUserIdMap.get(socket.id) === battleData[0].user1_id ? 'user1' : 'user2'
       const updateData = {
         [userNumber + '_code']: message,
-      }
+      };
       const { data, error } = await supabase
         .from('battle_state')
         .update(updateData)
         .eq('id', room.slice(1))
-        .select()
+        .select();
     } else if (action === 'player ready') {
-      socket.broadcast.to(room).emit('message', {message: message, action: action});
+      socket.broadcast.to(room).emit('message', { message, action });
       const { data: inviteData, error: inviteError } = await supabase
         .from('battle_invites')
         .select()
@@ -165,7 +222,7 @@ app.post('/execute', async (req, res) => {
         const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
         const dataToUpdate = {
           [colToUpdate]: 0,
-        }
+        };
         const { data, error } = await supabase
           .from('battle_state')
           .update(dataToUpdate)
@@ -180,157 +237,80 @@ app.post('/execute', async (req, res) => {
         // calculate progress
         const executionResults = response.data.run.output.replace(/'/g, '"').replace(/undefined/g, 'null');
         const executionResultsArr = JSON.parse(executionResults)
-        let passed = 0
+        let passed = 0;
         executionResultsArr && executionResultsArr.forEach((result, index) => {
           // console.log('result: ', result)
           if (isEqual(result[0], result[1])) {
-              passed++
+            passed += 1;
           }
-        })
+        });
         const progress = Math.floor((passed / executionResultsArr.length) * 100)
-        console.log('progress: ', progress)
+        console.log('progress: ', progress);
 
-            // check for winner 
-            if (progress < 100) {
-                // save progress to db
-                const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
-                const dataToUpdate = {
-                    [colToUpdate]: progress,
-                }
-                const { data, error } = await supabase
-                    .from('battle_state')
-                    .update(dataToUpdate)
-                    .eq('id', req.body.battleId)
-                    .select()
-                
-                // emit results to opponent
-                const opponentId = req.body.userNumber === 'p1' ? data[0]?.user2_id : data[0]?.user1_id;
-                const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
-                opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
-    
-                res.send({...response.data, progress: progress})
-            }
-            else if (progress === 100) {
-                // save progress to db
-                const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
-                const dataToUpdate = {
-                    [colToUpdate]: progress,
-                    battle_active: false,
-                    battle_winner: req.body.userId
-                }
-                const { data, error } = await supabase
-                    .from('battle_state')
-                    .update(dataToUpdate)
-                    .eq('id', req.body.battleId)
-                    .select()
-                
-                if (error) {
-                    console.log(error)
-                }
-                else if (data && data.length >= 1) {
-                    // emit results to opponent
-                    const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
-                    const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
-                    opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
-                    opponentSocket && opponentSocket.emit('message', { message: 'sad', action: 'game over' });
-    
-                    res.send({...response.data, progress: progress, gameOver: true})
-                }
-            }
-        }    
-  
-    })
-    
+        // check for winner
+        if (progress < 100) {
+          // save progress to db
+          const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
+          const dataToUpdate = {
+            [colToUpdate]: progress,
+          }
+          const { data, error } = await supabase
+            .from('battle_state')
+            .update(dataToUpdate)
+            .eq('id', req.body.battleId)
+            .select();
+          // emit results to opponent
+          const opponentId = req.body.userNumber === 'p1' ? data[0]?.user2_id : data[0]?.user1_id;
+          const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId));
+          opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
 
-    
+          res.send({ ...response.data, progress });
+        }
+        else if (progress === 100) {
+          // save progress to db
+          const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
+          const dataToUpdate = {
+            [colToUpdate]: progress,
+            battle_active: false,
+            battle_winner: req.body.userId
+          }
+          const { data, error } = await supabase
+            .from('battle_state')
+            .update(dataToUpdate)
+            .eq('id', req.body.battleId)
+            .select();
+          if (error) {
+            console.log(error);
+          }
+          else if (data && data.length >= 1) {
+            // emit results to opponent
+            const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
+            const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId));
+            opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
+            opponentSocket && opponentSocket.emit('message', { message: 'sad', action: 'game over' });
 
-    // io.emit('message', {message: res.locals.results, action: 'opponent progress'});
-    // res.send(res.locals.results)
-})
-
-// cron.schedule('*/6 * * * * *', () => {
-//     console.log('Running a job every 10 seconds');
-//     // delete all pods that haven't run code in the last hour
-
-// });
-
+            res.send({ ...response.data, progress, gameOver: true });
+          }
+        }
+      }
+    });
+  // io.emit('message', {message: res.locals.results, action: 'opponent progress'});
+  // res.send(res.locals.results)
+});
 
 app.use((err, req, res, next) => {
-    const defaultErr = {
-        log: 'Express error handler caught unknown middleware error',
-        status: 500,
-        message: {
-            err: 'An error occurred'
-        }
-    };
-    const errorObj = Object.assign({}, defaultErr, err);
-    console.log(errorObj.log);
-    return res.status(errorObj.status).json(errorObj.message);
+  const defaultErr = {
+    log: 'Express error handler caught unknown middleware error',
+    status: 500,
+    message: {
+      err: 'An error occurred',
+    },
+  };
+  const errorObj = { ...defaultErr, ...err };
+  console.log(errorObj.log);
+  return res.status(errorObj.status).json(errorObj.message);
 });
 
 server.listen(port, () => {
-    console.log(`AlgoBattles socket server listening on port ${port}`);
+  console.log(`AlgoBattles socket server listening on port ${port}`);
 });
-
-
-
-async function handleStartBattle(players, inviteId) {
-
-    console.log('starting battle')
-
-    // first determine algo and fetch template code
-    const algoNum = Math.floor(Math.random() * 8)
-    const { data: algoData, error: algoError } = await supabase
-            .from('algos')
-            .select('*')
-            .eq('id', algoNum)
-
-    if (algoError) {
-      console.log('error fetching algorithm')
-    }
-
-    else if (algoData && algoData.length >= 1) {
-        // then add battle to db
-        const { data: battleData, error: battleError } = await supabase
-            .from('battle_state')
-            .insert(
-                {
-                    algo_id: algoNum,
-                    algo_prompt: algoData[0].prompt,
-                    func_name: algoData[0].func_name,
-                    template_code_js: algoData[0].template_code_js,
-                    template_code_python: algoData[0].template_code_python,
-                    test_cases_json: algoData[0].test_cases_json,
-                    user1_id: players[0],
-                    user2_id: players[1],
-                    user1_code: null,
-                    user2_code: null,
-                    user1_progress: 0,
-                    user2_progress: 0,
-                    battle_active: true
-                }
-            )
-            .select()
-        if (battleData && battleData.length >= 1) {
-            console.log('battle added to db')
-            const battleInfo = {
-                battle_id: battleData[0].id,
-                algo_id: battleData[0].algo_id,
-            }
-            // delete invite
-            const { data: inviteData } = await supabase
-            .from ('battle_invites')
-            .delete()
-            .eq('id', inviteId)
-            .select() 
-            console.log(inviteData)
-
-        return battleInfo
-        }
-        else if (error) {
-          console.log('error creating battle')
-          console.log(error)
-          return false
-      }  
-  }
-}
