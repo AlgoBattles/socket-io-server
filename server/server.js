@@ -15,7 +15,7 @@ const port = 10000;
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }))
+app.use(express.urlencoded({ extended: true }));
 
 const API_KEY = 'a3f1b7b6cde1234567890abcdef1234567890abcd';
 // Middleware for API key check
@@ -34,9 +34,9 @@ const API_KEY = 'a3f1b7b6cde1234567890abcdef1234567890abcd';
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: 'https://algobattles-next-app.vercel.app/',
     methods: ['GET', 'POST'],
-    allowedHeaders: ['my-custom-header'],
+    allowedHeaders: '*',
     credentials: true,
   },
 });
