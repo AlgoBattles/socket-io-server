@@ -34,7 +34,7 @@ const API_KEY = 'a3f1b7b6cde1234567890abcdef1234567890abcd';
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://algobattles-next-app.vercel.app/',
+    origin: 'https://algobattles-next-app.vercel.app',
     methods: ['GET', 'POST'],
     allowedHeaders: '*',
     credentials: true,
