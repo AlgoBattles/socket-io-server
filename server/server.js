@@ -34,7 +34,7 @@ const API_KEY = 'a3f1b7b6cde1234567890abcdef1234567890abcd';
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://www.algobattles.xyz',
+    origin: ['https://www.algobattles.xyz', 'http://localhost:3000'],
     methods: ['GET', 'POST'],
     allowedHeaders: '*',
     credentials: true,
@@ -100,7 +100,7 @@ async function handleStartBattle(players, inviteId) {
         .eq('id', inviteId)
         .select();
         // console.log(inviteData)
-      return battleInfo
+      return battleInfo;
     }
     else if (error) {
       // console.log('error creating battle')
