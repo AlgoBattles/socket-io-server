@@ -54,20 +54,20 @@ const socketToUserIdMap = new Map();
 const userToSocketMap = new Map();
 
 async function handleStartBattle(players, inviteId) {
-  console.log('starting battle')
+  // console.log('starting battle');
 
   // first determine algo and fetch template code
-  const algoNum = Math.floor(Math.random() * 8)
+  const algoNum = Math.floor(Math.random() * 8);
   const { data: algoData, error: algoError } = await supabase
     .from('algos')
     .select('*')
-    .eq('id', algoNum)
+    .eq('id', algoNum);
 
   if (algoError) {
-    console.log('error fetching algorithm')
+    console.log('error fetching algorithm');
   } else if (algoData && algoData.length >= 1) {
     // then add battle to db
-    const { data: battleData, error: battleError } = await supabase
+    const { data: battleData } = await supabase
       .from('battle_state')
       .insert(
         {
@@ -83,12 +83,12 @@ async function handleStartBattle(players, inviteId) {
           user2_code: null,
           user1_progress: 0,
           user2_progress: 0,
-          battle_active: true
+          battle_active: true,
         },
       )
       .select()
     if (battleData && battleData.length >= 1) {
-      console.log('battle added to db')
+      console.log('battle added to db');
       const battleInfo = {
         battle_id: battleData[0].id,
         algo_id: battleData[0].algo_id,
@@ -101,16 +101,13 @@ async function handleStartBattle(players, inviteId) {
         .select();
         // console.log(inviteData)
       return battleInfo;
-    }
-    else if (error) {
+    } else {
       // console.log('error creating battle')
-      // console.log(error)
+      console.log(error)
       return false
-  }  
+  }
   }
 }
-
-
 
 io.on('connection', (socket) => {
   // join room
@@ -133,7 +130,7 @@ io.on('connection', (socket) => {
       const { data: battleData, error: battleError } = await supabase
         .from('battle_state')
         .select()
-        .eq('id', room.slice(1))
+        .eq('id', room.slice(1));
       const userNumber = socketToUserIdMap.get(socket.id) === battleData[0].user1_id ? 'user1' : 'user2'
       const updateData = {
         [userNumber + '_code']: message,
@@ -181,7 +178,7 @@ io.on('connection', (socket) => {
             }
           )
           .eq('id', room.slice(1))
-          .select()
+          .select();
         if (data && data.length >= 1) {
           if (data[0].sender_ready && data[0].recipient_ready) {
             const players = [data[0].sender_id, data[0].recipient_id]
@@ -223,38 +220,36 @@ app.post('/execute', async (req, res) => {
         const dataToUpdate = {
           [colToUpdate]: 0,
         };
-        const { data, error } = await supabase
+        const { data } = await supabase
           .from('battle_state')
           .update(dataToUpdate)
           .eq('id', req.body.battleId)
-          .select()
+          .select();
         // emit results to opponent
         const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
-        const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId))
+        const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId));
         opponentSocket && opponentSocket.emit('message', { message: 0, action: 'opponent progress' });
-        res.send(response.data)
+        res.send(response.data);
       } else if (response.data.run.code === 0) {
         // calculate progress
         const executionResults = response.data.run.output.replace(/'/g, '"').replace(/undefined/g, 'null');
-        const executionResultsArr = JSON.parse(executionResults)
+        console.log(executionResults);
+        const executionResultsArr = JSON.parse(executionResults);
         let passed = 0;
-        executionResultsArr && executionResultsArr.forEach((result, index) => {
-          // console.log('result: ', result)
+        executionResultsArr && executionResultsArr.forEach((result) => {
           if (isEqual(result[0], result[1])) {
             passed += 1;
           }
         });
-        const progress = Math.floor((passed / executionResultsArr.length) * 100)
-        console.log('progress: ', progress);
-
+        const progress = Math.floor((passed / executionResultsArr.length) * 100);
         // check for winner
         if (progress < 100) {
           // save progress to db
           const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
           const dataToUpdate = {
             [colToUpdate]: progress,
-          }
-          const { data, error } = await supabase
+          };
+          const { data } = await supabase
             .from('battle_state')
             .update(dataToUpdate)
             .eq('id', req.body.battleId)
@@ -265,15 +260,14 @@ app.post('/execute', async (req, res) => {
           opponentSocket && opponentSocket.emit('message', { message: progress, action: 'opponent progress' });
 
           res.send({ ...response.data, progress });
-        }
-        else if (progress === 100) {
+        } else if (progress === 100) {
           // save progress to db
           const colToUpdate = req.body.userNumber === 'p1' ? 'user1_progress' : 'user2_progress'
           const dataToUpdate = {
             [colToUpdate]: progress,
             battle_active: false,
             battle_winner: req.body.userId
-          }
+          };
           const { data, error } = await supabase
             .from('battle_state')
             .update(dataToUpdate)
@@ -281,8 +275,7 @@ app.post('/execute', async (req, res) => {
             .select();
           if (error) {
             console.log(error);
-          }
-          else if (data && data.length >= 1) {
+          } else if (data && data.length >= 1) {
             // emit results to opponent
             const opponentId = req.body.userNumber === 'p1' ? data[0].user2_id : data[0].user1_id;
             const opponentSocket = io.sockets.sockets.get(userToSocketMap.get(opponentId));
@@ -294,8 +287,6 @@ app.post('/execute', async (req, res) => {
         }
       }
     });
-  // io.emit('message', {message: res.locals.results, action: 'opponent progress'});
-  // res.send(res.locals.results)
 });
 
 app.use((err, req, res, next) => {
