@@ -4,7 +4,7 @@ async function handleStartBattle(players, inviteId) {
   // console.log('starting battle');
 
   // first determine algo and fetch template code
-  const algoNum = Math.floor(Math.random() * 8);
+  const algoNum = Math.floor(Math.random() * 6) + 1;
   const { data: algoData, error: algoError } = await dbService.fetchAlgorithm(algoNum);
 
   if (algoError) {
