@@ -46,7 +46,7 @@ async function handleStartBattle(players, inviteId) {
       };
 
       // delete invite
-      await dbService.updateBattleInvites(inviteId, { deleted: true }); // Assuming a soft delete
+      await dbService.deleteBattleInvite(inviteId);
       return battleInfo;
     } else {
       console.log('No data returned when adding battle');

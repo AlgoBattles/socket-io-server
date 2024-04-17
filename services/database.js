@@ -53,4 +53,13 @@ async function updateBattleInvites(id, updates) {
   return { data, error };
 }
 
-module.exports = { fetchAlgorithm, addNewBattle, getBattleState, updateBattleState, getBattleInvites, updateBattleInvites };
+async function deleteBattleInvite(id) {
+  const { data, error } = await supabase
+    .from('battle_invites')
+    .delete()
+    .eq('id', id);
+
+  return { data, error };
+}
+
+module.exports = { fetchAlgorithm, addNewBattle, getBattleState, updateBattleState, getBattleInvites, updateBattleInvites, deleteBattleInvite };
